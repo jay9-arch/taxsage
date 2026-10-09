@@ -1,16 +1,42 @@
 import json
-from google import genai
+import time
+from groq import Groq
 from google.colab import userdata
 
 _client = None
-MODEL_NAME = "gemini-3.5-flash"
+MODEL_NAME = "openai/gpt-oss-20b"
 
 def _get_client():
     global _client
     if _client is None:
-        api_key = userdata.get('GEMINI_API_KEY')
-        _client = genai.Client(api_key=api_key)
+        api_key = userdata.get('GROQ_API_KEY')
+        _client = Groq(api_key=api_key)
     return _client
+
+def _call_groq(prompt, max_attempts=4, base_wait=5):
+    client = _get_client()
+    last_error = None
+    for attempt in range(max_attempts):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=20,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            err_str = str(e)
+            if "429" in err_str or "rate_limit" in err_str.lower() or "quota" in err_str.lower():
+                print(f"Groq quota/rate limit hit: {e}")
+                raise
+            if "404" in err_str or "model_not_found" in err_str.lower():
+                print(f"Groq model not found: {e}")
+                raise
+            wait = base_wait * (attempt + 1)
+            print(f"Groq call failed (attempt {attempt+1}/{max_attempts}): {type(e).__name__}. Waiting {wait}s...")
+            time.sleep(wait)
+    raise last_error
 
 SCHEMA_PROMPT = """Extract the following financial information from the user's message
 and return ONLY a valid JSON object, with no other text, no markdown formatting, and no
@@ -23,18 +49,19 @@ explanation. Use these exact keys:
 
 Convert phrases like "12 lakhs" to 1200000, "1.5 lakh" to 150000, etc.
 
+IMPORTANT: Section 80C has a maximum limit of Rs. 150000 per year, and Section 80D
+has a maximum limit of Rs. 25000 per year. If the user says something like "the full
+amount", "max it out", "maximum", or "fully invest" in relation to one of these
+sections WITHOUT giving a specific number, use that section's maximum limit as the
+value (150000 for 80C, 25000 for 80D).
+
 User message: "{message}"
 
 JSON:"""
 
 def extract_profile(message):
-    client = _get_client()
     prompt = SCHEMA_PROMPT.format(message=message)
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-    )
-    raw_text = response.text.strip()
+    raw_text = _call_groq(prompt).strip()
     if raw_text.startswith("```"):
         raw_text = raw_text.strip("`")
         raw_text = raw_text.replace("json", "", 1).strip()
