@@ -1,11 +1,12 @@
 
 class Rule:
-    def __init__(self, name, citation, produces, condition, action):
-        self.name = name          # human-readable rule name
-        self.citation = citation  # statutory clause, e.g. "Section 80C"
-        self.produces = produces  # the fact key this rule derives
-        self.condition = condition  # function(facts) -> bool
-        self.action = action        # function(facts) -> value
+    def __init__(self, name, citation, produces, condition, action, depends_on=None):
+        self.name = name
+        self.citation = citation
+        self.produces = produces
+        self.condition = condition
+        self.action = action
+        self.depends_on = depends_on or []  # fact keys this rule actually reads
 
     def can_fire(self, facts):
         return self.produces not in facts and self.condition(facts)
@@ -28,6 +29,7 @@ def forward_chain(initial_facts, rules):
                     "citation": rule.citation,
                     "derived_fact": rule.produces,
                     "value": facts[rule.produces],
+                    "depends_on": rule.depends_on,
                 })
                 changed = True
     return facts, trace
