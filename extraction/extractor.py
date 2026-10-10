@@ -1,7 +1,7 @@
 import json
 import time
+import os
 from groq import Groq
-from google.colab import userdata
 
 _client = None
 MODEL_NAME = "openai/gpt-oss-20b"
@@ -9,7 +9,7 @@ MODEL_NAME = "openai/gpt-oss-20b"
 def _get_client():
     global _client
     if _client is None:
-        api_key = userdata.get('GROQ_API_KEY')
+        api_key = os.environ.get('GROQ_API_KEY')
         _client = Groq(api_key=api_key)
     return _client
 
